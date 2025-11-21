@@ -2,15 +2,15 @@
 #define A_lda(i, j) A[(i) * K + (j)]
 #define B_lda(i, j) B[(i) * N + (j)]
 #define C_lda(i, j) C[(i) * N + (j)]
+#define B_blda(i, j) B_block[(i) * BLOCK_SIZE + (j)]
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
 void matmult(const int64_t M, const int64_t N, const int64_t K,
              const double *const A, const double *const B, double *const C)
 {
-  // from test 2. i discovered BLOCK_SIZE = 16 or 32 are faster, especially 16.
-  const int64_t BLOCK_SIZE = 16;
-  double B_block[BLOCK_SIZE][BLOCK_SIZE];
+  const int64_t BLOCK_SIZE = 64;
+  double B_block[BLOCK_SIZE * BLOCK_SIZE];
   for (int64_t i = 0; i < M; i++)
   {
     for (int64_t j = 0; j < N; j++)
@@ -31,17 +31,34 @@ void matmult(const int64_t M, const int64_t N, const int64_t K,
         {
           for (int p = 0; p < pb; p++)
           {
-            B_block[j][p] = B_lda(pp + p, jj + j); // B transpose
+            B_blda(j, p) = B_lda(pp + p, jj + j); // B transpose
           }
         }
-        for (int i = 0; i < ib; i++)
+        for (int i = 0; i < ib; i += 2)
         {
-          for (int j = 0; j < jb; j++)
+          for (int j = 0; j < jb; j += 2)
           {
-            for (int p = 0; p <= pb - 4; p += 4) // try divid the loop since 4 is the LCD
+            // 2x2 blocking register
+            register double c00 = C_lda(ii + i, jj + j);
+            register double c01 = C_lda(ii + i, jj + j + 1);
+            register double c10 = C_lda(ii + i + 1, jj + j);
+            register double c11 = C_lda(ii + i + 1, jj + j + 1);
+            for (int p = 0; p < pb; p++)
             {
-              C_lda(ii + i, jj + j) += A_lda(ii + i, pp + p) * B_block[j][p] + A_lda(ii + i, pp + p + 1) * B_block[j][p + 1] + A_lda(ii + i, pp + p + 2) * B_block[j][p + 2] + A_lda(ii + i, pp + p + 3) * B_block[j][p + 3];
+              register double a0 = A_lda(ii + i, pp + p);
+              register double a1 = A_lda(ii + i + 1, pp + p);
+              register double b0 = B_blda(j, p);
+              register double b1 = B_blda((j + 1), p);
+
+              c00 += a0 * b0;
+              c01 += a0 * b1;
+              c10 += a1 * b0;
+              c11 += a1 * b1;
             }
+            C_lda(ii + i, jj + j) = c00;
+            C_lda(ii + i, jj + j + 1) = c01;
+            C_lda(ii + i + 1, jj + j) = c10;
+            C_lda(ii + i + 1, jj + j + 1) = c11;
           }
         }
       }
