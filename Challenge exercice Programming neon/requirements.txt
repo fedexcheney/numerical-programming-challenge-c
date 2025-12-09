@@ -1,6 +1,0 @@
-# Basic libraries for course
-numpy
-scipy
-numba
-matplotlib
-Pandas

@@ -4,8 +4,10 @@
 CC = clang
 CFLAGS = -Wall -Wextra
 MAIN = main.c
-MATMULT_VARIANTS = matmult.c matmult_blocked_16.c
+MATMULT_VARIANTS = matmult_omp.c matmult.c matmult_apple_dgemm.c
 TARGETS = $(MATMULT_VARIANTS:.c=)
+
+LIBOMP = $(shell brew --prefix libomp)
 
 # Debug build for all variants
 debug: CFLAGS += -g -O0 -fsanitize=address
@@ -14,6 +16,8 @@ debug: $(addsuffix -debug, $(TARGETS))
 
 # Optimized build for all variants (We are using -mcpu=apple-m1 Use the right "m" (m1, m2, m3, etc.) version of the CPU)
 opt: CFLAGS += -O3 -mcpu=apple-m1 -ffast-math -funroll-loops
+opt: CPPFLAGS += -I$(LIBOMP)/include
+opt: LDFLAGS += -L$(LIBOMP)/lib -Wl,-rpath,$(LIBOMP)/lib -framework Accelerate
 opt: $(addsuffix -opt, $(TARGETS))
 
 # Individual variant targets
@@ -21,7 +25,9 @@ opt: $(addsuffix -opt, $(TARGETS))
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
 %-opt: $(MAIN) %.c
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $(MAIN) -o main.o
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $*.c -o $*.o
+	$(CC) main.o $*.o $(LDFLAGS) -lomp -o $@
 
 # Performance test for all variants
 perf: opt
